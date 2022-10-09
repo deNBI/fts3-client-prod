@@ -1,0 +1,27 @@
+version: "3.5"
+services:
+
+  fts3_client:
+    container_name: fts3_client
+    image: denbicloud/fts3-client:latest
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
+    env_file:
+      - .env
+    volumes:
+      - ./app:/code/app
+      - ./keys:/code/keys
+    ports:
+      - "127.0.0.1:8080:80"
+    secrets:
+      - API_KEY
+      - S3_ACCESS_KEY
+      - S3_SECRET_KEY
+
+# define secret_key and path to your secret file here
+secrets:
+  API_KEY:
+    file: .secrets/API_KEY
+  S3_ACCESS_KEY:
+    file: .secrets/S3_ACCESS_KEY
+  S3_SECRET_KEY:
+    file: .secrets/S3_SECRET_KEY
