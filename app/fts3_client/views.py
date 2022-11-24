@@ -8,6 +8,7 @@ from app.dependencies.fts3_client import fts3_client
 from app.dependencies.s3_client import s3_client
 from app.models.serializers import DatabaseIn, Job, FileIn
 from app.transformers.directory import directory_file_to_files_list
+from app.transformers.minio import jobs_to_minio_exclude_string
 from app.transformers.zenodo import get_files_by_doi
 
 router = APIRouter()
@@ -27,7 +28,7 @@ async def add_copy_jobs_from_database_file(
                 file.skip_transfer = True
                 files_additional: List[FileIn] = await get_files_by_doi(file.source)
                 version.files.extend(files_additional)
-    db_file_in, cancel_dict, check_jobs = await fts3_client.filter_database_in_by_unfinished_jobs(db_file_in)
+    db_file_in, cancel_dict, check_jobs = await fts3_client.filter_database_in_by_active_jobs(db_file_in)
     for job in cancel_dict["cancel_jobs"]:
         logger.info(f"Cancelling {job}.")
         await fts3_client.cancel_job(job_id=job.job_id)
@@ -74,7 +75,7 @@ async def dry_add_copy_jobs_from_database_file(
                 file.skip_transfer = True
                 files_additional: List[FileIn] = await get_files_by_doi(file.source)
                 version.files.extend(files_additional)
-    db_file_in, cancel_dict, check_jobs = await fts3_client.filter_database_in_by_unfinished_jobs(db_file_in)
+    db_file_in, cancel_dict, check_jobs = await fts3_client.filter_database_in_by_active_jobs(db_file_in)
     db_file_in, delete_list = await s3_client.filter_database_in(db_file_in)
     for version in db_file_in.versions:
         version.files = [file for file in version.files if not file.skip_transfer]
@@ -103,5 +104,16 @@ async def cancel_job(
 
 
 @router.get("/transfers")
-async def get_all_jobs_status(api_key: APIKey = Depends(get_api_key)):
-    return await fts3_client.get_all_unfinished_jobs()
+async def get_all_jobs_status(
+        unfinished_only: bool = False,
+        output_for_minio_exclude: bool = False,
+        api_key: APIKey = Depends(get_api_key)
+):
+    if unfinished_only:
+        jobs = await fts3_client.get_all_unfinished_jobs()
+        if output_for_minio_exclude and len(jobs) > 0:
+            return await jobs_to_minio_exclude_string(jobs)
+        else:
+            return jobs
+    else:
+        return await fts3_client.get_all_active_jobs()

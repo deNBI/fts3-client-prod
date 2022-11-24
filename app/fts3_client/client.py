@@ -1,6 +1,7 @@
 from typing import List, Dict
 
 import logging
+import requests
 from app.models.serializers import VersionIn, DatabaseIn, Job
 from app.settings import settings
 import fts3.rest.client.easy as fts3
@@ -51,10 +52,10 @@ class FTS3Client:
             logger.info(f"Job id: {job_id} for {version}.")
             return job_id
 
-    async def filter_database_in_by_unfinished_jobs(self, db_file_in: DatabaseIn) -> (DatabaseIn, Dict, List):
+    async def filter_database_in_by_active_jobs(self, db_file_in: DatabaseIn) -> (DatabaseIn, Dict, List):
         cancel_dict = {"cancel_jobs": [], "cancel_files": {}}
         check_jobs: List[Job] = []
-        unfinished_jobs: List[Job] = await self.get_unfinished_jobs_for_database(db_file_in)
+        unfinished_jobs: List[Job] = await self.get_active_jobs_for_database(db_file_in)
         for job_ in unfinished_jobs:
             job = await self.get_job_status(job_.job_id)
             if job.job_state != "ACTIVE" and job.job_state != "SUBMITTED":
@@ -98,6 +99,25 @@ class FTS3Client:
         return job
 
     async def get_all_unfinished_jobs(self):
+        params = {
+            "time_window": 1,
+            "state_in": "ACTIVE,FAILED,FINISHEDDIRTY,CANCELED,SUBMITTED"
+        }
+        jobs = requests.get(
+            f"{self.fts3_url}/jobs",
+            params=params,
+            cert=(self.cert, self.key),
+            verify=self.ca
+        )
+        jobs = jobs.json()
+        # context = self.create_context()
+        returned_jobs = []
+        # jobs = fts3.list_jobs(context, state_in=['ACTIVE', 'FAILED', 'FINISHEDDIRTY', 'CANCELED', 'SUBMITTED'])
+        for job in jobs:
+            returned_jobs.append(Job(**job))
+        return returned_jobs
+
+    async def get_all_active_jobs(self):
         context = self.create_context()
         returned_jobs = []
         jobs = fts3.list_jobs(context)
@@ -105,9 +125,9 @@ class FTS3Client:
             returned_jobs.append(Job(**job))
         return returned_jobs
 
-    async def get_unfinished_jobs_for_database(self, database: DatabaseIn):
+    async def get_active_jobs_for_database(self, database: DatabaseIn):
         returned_jobs = []
-        jobs = await self.get_all_unfinished_jobs()
+        jobs = await self.get_all_active_jobs()
         for job in jobs:
             if job.job_metadata.database == database.path:
                 returned_jobs.append(job)
