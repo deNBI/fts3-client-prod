@@ -107,10 +107,11 @@ async def cancel_job(
 async def get_all_jobs_status(
         unfinished_only: bool = False,
         output_for_minio_exclude: bool = False,
+        time_window: int = 6,
         api_key: APIKey = Depends(get_api_key)
 ):
     if unfinished_only:
-        jobs = await fts3_client.get_all_unfinished_jobs()
+        jobs = await fts3_client.get_all_unfinished_jobs(time_window=time_window)
         if output_for_minio_exclude and len(jobs) > 0:
             return await jobs_to_minio_exclude_string(jobs)
         else:

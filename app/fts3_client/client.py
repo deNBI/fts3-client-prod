@@ -98,9 +98,9 @@ class FTS3Client:
 
         return job
 
-    async def get_all_unfinished_jobs(self):
+    async def get_all_unfinished_jobs(self, time_window=6):
         params = {
-            "time_window": 1,
+            "time_window": time_window,
             "state_in": "ACTIVE,FAILED,FINISHEDDIRTY,CANCELED,SUBMITTED"
         }
         jobs = requests.get(
