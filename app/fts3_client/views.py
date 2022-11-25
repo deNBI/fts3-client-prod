@@ -3,6 +3,9 @@ from typing import List
 from fastapi import APIRouter, Depends
 from fastapi.openapi.models import APIKey
 import logging
+
+from starlette.responses import PlainTextResponse
+
 from app.dependencies.key_auth import get_api_key
 from app.dependencies.fts3_client import fts3_client
 from app.dependencies.s3_client import s3_client
@@ -113,7 +116,7 @@ async def get_all_jobs_status(
     if unfinished_only:
         jobs = await fts3_client.get_all_unfinished_jobs(time_window=time_window)
         if output_for_minio_exclude and len(jobs) > 0:
-            return await jobs_to_minio_exclude_string(jobs)
+            return PlainTextResponse(await jobs_to_minio_exclude_string(jobs))
         else:
             return jobs
     else:
