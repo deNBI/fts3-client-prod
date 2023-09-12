@@ -1,0 +1,160 @@
+- name: Install and configure MySQL and FTS3
+  hosts: all  # Replace with the target host or group
+  become: yes
+  vars:
+    mysql_root_password: mysql_root_password  # Define your MySQL root password as a variable
+    database_name: your_database_name  # Define the database name as a variable
+    fts_schema_file: fts-schema-8.0.1.sql  # Define the FTS schema file as a variable
+    fts_user_name: your_fts_user_name  # Define the FTS user name as a variable
+    fts_user_password: fts_user_password  # Define the FTS user password as a variable
+    fts_user_subject: '/C=DE/ST=SomeProvince/L=SomeCity/O=SomeOrganization/CN=A_USER/emailAddress=someone@somewhere.de'  # Define the FTS user's subject as a variable
+
+
+  tasks:
+    - name: Update YUM packages
+      yum:
+        name: '*'
+        state: latest
+      become: yes
+      
+    - name: Install epel-release package (for CentOS)
+      yum:
+        name: epel-release
+        state: present
+      when: ansible_distribution == 'CentOS'
+
+    - name: Install pip via yum
+      yum:
+        name: python3-pip
+        state: present
+      when: ansible_distribution == 'CentOS'
+
+    - name: Install pexpect via pip
+      pip:
+        name: pexpect
+        state: present
+
+    - name: Add MySQL YUM repository
+      shell: "rpm -Uvh https://repo.mysql.com/mysql80-community-release-el7-3.noarch.rpm"
+      args:
+            creates: /etc/yum.repos.d/mysql-community.repo
+      ignore_errors: yes
+      become: true
+
+    
+    - name: Disable MySQL repository by modifying configuration
+      replace:
+        path: /etc/yum.repos.d/mysql-community.repo
+        regexp: 'enabled=1'
+        replace: 'enabled=0'
+  
+      
+    - name: Import MySQL GPG Key
+      shell: "rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2022"
+    - name: Enable MySQL 8.0 repository
+      
+      command: "yum --enablerepo=mysql80-community install -y mysql-community-server"
+
+      become: true
+
+
+    - name: Start MySQL Service
+      service:
+        name: mysqld
+        state: started
+    
+    - name: Get temporary MySQL password
+      shell: "grep 'A temporary password' /var/log/mysqld.log"
+      register: temp_password
+      
+    - name: Save temporary MySQL password to a variable
+      set_fact:
+        temp_password: "{{ temp_password.stdout_lines[0].split(': ')[1] }}"
+
+
+    - name: Check current MySQL root password
+      command: mysql -u root -p"{{ mysql_root_password }}" -e "SELECT 1;"
+      register: mysql_login_result
+      ignore_errors: yes  # Ignore errors to handle both success and failure cases
+      no_log: true
+
+        
+    - name: Run mysql_secure_installation
+      expect:
+        command: mysql_secure_installation
+        responses:
+          'Enter password for user root': "{{ temp_password }}"
+          'Set root password? [Y/n]': "Y"
+          'New password:': "{{ mysql_root_password }}"  # Use the variable for the root password
+          'Re-enter new password:': "{{ mysql_root_password }}"  # Repeat the password
+          'Remove anonymous users? [Y/n]': "Y"
+          'Disallow root login remotely? [Y/n]': "Y"
+          'Remove test database and access to it? [Y/n]': "Y"
+          'Reload privilege tables now? [Y/n]': "Y"
+          'Change the password for root ?': 'Y'
+        echo: true
+      when: mysql_login_result.rc == 1  # Only run if login was failure
+      
+    - name: Restart MySQL Service
+      service:
+        name: mysqld
+        state: restarted
+
+    - name: Enable MySQL to start on boot
+      command: chkconfig mysqld on
+        
+    - name: Create FTS3 database
+      shell: "mysql -u root -p{{ mysql_root_password }} -e 'CREATE DATABASE {{ database_name }};'"
+      ignore_errors: yes
+      no_log: true
+        
+    - name: Install wget
+      yum:
+        name: wget
+        state: present
+
+    - name: Download FTS3 and DMC repository files
+      get_url:
+        url: "https://fts-repo.web.cern.ch/fts-repo/fts3-prod-el7.repo"
+        dest: "/etc/yum.repos.d/fts3-prod-el7.repo"
+
+    - name: Download DMC repository file
+      get_url:
+        url: "https://dmc-repo.web.cern.ch/dmc-repo/dmc-el7.repo"
+        dest: "/etc/yum.repos.d/dmc-el7.repo"
+
+    - name: Update YUM repositories
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Install fts-mysql package
+      yum:
+        name: fts-mysql
+        state: present
+        
+    - name: Import FTS3 schema
+      shell: >
+        mysql -u root --password="{{ mysql_root_password }}" "{{ database_name }}" < /usr/share/fts-mysql/{{ fts_schema_file }}
+      no_log: true
+
+    - name: Create FTS3 user
+      shell: >
+        mysql -u root -p{{ mysql_root_password }} -e
+        "CREATE USER '{{ fts_user_name }}'@'%' IDENTIFIED WITH mysql_native_password BY '{{ fts_user_password }}';
+        GRANT ALL ON {{ database_name }}.* TO '{{ fts_user_name }}'@'%';
+        FLUSH PRIVILEGES;
+        GRANT SUPER ON *.* to '{{ fts_user_name }}'@'%';
+        FLUSH PRIVILEGES;"
+      no_log: true
+
+
+    - name: Insert user for FTS3 REST API configuration
+      shell: >
+        mysql -u root -p{{ mysql_root_password }} {{ database_name }} -e
+        "insert into t_authz_dn (dn, operation) values ('{{ fts_user_subject }}', 'config');"
+      no_log: true
+
+
+
+
