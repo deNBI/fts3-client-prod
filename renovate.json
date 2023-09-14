@@ -1,0 +1,77 @@
+{
+  "extends": [
+    "config:base",
+    ":automergePatch"
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": [
+        "app/djfront/settings_base\\.py"
+      ],
+      "matchStrings": [
+          "CLUSTER_AUTOSCALING_VERSION\\s*=\\s*\"(?<currentValue>[^\"]*)\""
+      ],
+      "depNameTemplate": "deNBI/autoscaling-cluster",
+      "datasourceTemplate": "github-tags"
+    }
+  ],
+  "packageRules": [
+    {
+      "updateTypes": [
+        "major"
+      ],
+      "addLabels": [
+        "major"
+      ]
+    },
+    {
+      "updateTypes": [
+        "minor"
+      ],
+      "addLabels": [
+        "minor"
+      ]
+    },
+    {
+      "updateTypes": [
+        "patch"
+      ],
+      "addLabels": [
+        "patch"
+      ]
+    },
+    {
+      "updateTypes": [
+        "pin"
+      ],
+      "addLabels": [
+        "pin"
+      ]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ]
+  },
+  "baseBranches": [
+    "dev"
+  ],
+  "reviewers": [
+    "team:portal-dev"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "assignees": [
+    "team:portal-dev"
+  ],
+  "branchPrefix": "deps/",
+  "bumpVersion": "minor",
+  "pre-commit": {
+      "enabled":true
+    },
+  "rebaseWhen": "behind-base-branch",
+  "commitBodyTable": "true",
+  "commitMessagePrefix": "feat(Dependencies):"
+}
