@@ -1,0 +1,3 @@
+{% for ip in upstream_ips %}
+server {{ ip }}:{{ nginx_upstream_port_web }};
+{% endfor %}

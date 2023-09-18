@@ -1,0 +1,168 @@
+
+---
+- name: Configure FTS3 Node
+  hosts: all  # Replace with your node's hostname or IP address
+  become: yes
+  become_method: sudo
+
+  vars:
+    dbusername: db_user
+    dbpassword: db_password
+    dbconnectstring: IP/DB
+    sitename: Bielefeld
+    s3_host: openstack.cebitec.uni-bielefeld.de
+
+  tasks:
+    - name: Update the system
+      yum:
+        name: '*'
+        state: latest
+      register: update_result
+
+    - name: Download FTS3 YUM repositories
+      get_url:
+        url: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+      with_items:
+        - { src: 'https://fts-repo.web.cern.ch/fts-repo/fts3-prod-el7.repo', dest: '/etc/yum.repos.d/fts3-prod-el7.repo' }
+        - { src: 'https://dmc-repo.web.cern.ch/dmc-repo/dmc-el7.repo', dest: '/etc/yum.repos.d/dmc-el7.repo' }
+        - { src: 'https://fts-repo.web.cern.ch/fts-repo/fts3-depend-el7.repo', dest: '/etc/yum.repos.d/fts3-depend-el7.repo' }
+
+
+    - name: Install required packages
+      yum:
+        name:
+          - wget
+          - epel-release
+          - centos-release-scl-rh
+          - MySQL-python
+
+
+
+    - name: Update YUM repositories
+      yum:
+        name: '*'
+        state: latest
+
+    - name: Install required packages
+      yum:
+        name:
+          - wget
+          - epel-release
+          - centos-release-scl-rh
+          - fts-server
+          - fts-rest-server
+          - fts-monitoring
+          - fts-server-selinux
+          - fts-rest-server-selinux
+          - fts-monitoring-selinux
+          - fts-mysql
+
+
+    - name: Configure FTS3 config file
+      lineinfile:
+        path: "{{ item.path }}"
+        regexp: "^{{ item.option }}"
+        line: "{{ item.option }}={{ item.value }}"
+      loop:
+        - { path: '/etc/fts3/fts3config', option: 'DbUserName', value: "{{ dbusername }}" }
+        - { path: '/etc/fts3/fts3config', option: 'DbPassword', value: "{{ dbpassword }}" }
+        - { path: '/etc/fts3/fts3config', option: 'DbConnectString', value: "{{ dbconnectstring }}" }
+        - { path: '/etc/fts3/fts3config', option: 'Infosys', value: false }
+        - { path: '/etc/fts3/fts3config', option: 'SiteName', value: "{{ sitename }}" }
+
+
+    - name: Configure FTS3  rest config files
+      lineinfile:
+        path: "{{ item.path }}"
+        regexp: "^{{ item.option }}"
+        line: "{{ item.option }}={{ item.value }}"
+      loop:
+
+        - { path: '/etc/fts3/fts3restconfig', option: 'DbUserName', value: "{{ dbusername }}" }
+        - { path: '/etc/fts3/fts3restconfig', option: 'DbPassword', value: "{{ dbpassword }}" }
+        - { path: '/etc/fts3/fts3restconfig', option: 'DbConnectString', value: "{{ dbconnectstring }}" }
+        - { path: '/etc/fts3/fts3restconfig', option: 'Infosys', value: false }
+        - { path: '/etc/fts3/fts3restconfig', option: 'SiteName', value: "{{ sitename }}" }
+
+    - name: Ensure the certificates directory exists
+      ansible.builtin.file:
+        path: "/etc/grid-security/certificates"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy certificate files to the remote server
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: "{{ host_cert_path }}", dest: '/etc/grid-security/hostcert.pem', mode: '0444' }
+        - { src: "{{ host_key_path }}", dest: '/etc/grid-security/hostkey.pem', mode: '0400' }
+        - { src: "{{ ca_cert_path }}", dest: '/etc/grid-security/certificates/CA.pem', mode: '0444' }
+
+
+    - name: Set permissions for certificates
+      file:
+        path: "{{ item.path }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: '/etc/grid-security/hostcert.pem', mode: '0444' }
+        - { path: '/etc/grid-security/hostkey.pem', mode: '0400' }
+        - { path: '/etc/grid-security/certificates/CA.pem', mode: '0444' }
+
+    - name: Configure gfal2
+      lineinfile:
+        path: /etc/gfal2.d/http_plugin.conf
+        regexp: '^DEFAULT_COPY_MODE='
+        line: 'DEFAULT_COPY_MODE=streamed'
+
+    - name: Configure gfal2
+      lineinfile:
+        path: /etc/gfal2.d/http_plugin.conf
+        regexp: '^DEFAULT_COPY_MODE='
+        line: 'DEFAULT_COPY_MODE=streamed'
+
+    - name: Create gfal2_custom.conf file
+      lineinfile:
+        path: /etc/gfal2.d/gfal2_custom.conf
+        line: "{{ item }}"
+      loop:
+        - "[S3:{{ s3_host }}]"
+        - "ENABLE_STREAM_COPY=true"
+        - "DEFAULT_COPY_MODE=streamed"
+      create: yes
+
+    - name: Remove SSLCARevocationPath, SSLCARevocationCheck, and SSLCACertificatePath lines
+      become: yes
+      replace:
+        path: /etc/httpd/conf.d/fts3rest.conf
+        regexp: '^(.*)(SSLCARevocationPath|SSLCARevocationCheck|SSLCACertificatePath)(.*)$'
+        replace: ''
+
+
+    - name: Add SSLCACertificateFile line after SSLCertificateFile directive
+      become: yes
+      lineinfile:
+        path: /etc/httpd/conf.d/fts3rest.conf
+        regexp: '^SSLCertificateFile /etc/grid-security/hostcert.pem$'
+        line: 'SSLCACertificateFile /etc/grid-security/certificates/CA.pem'
+        insertafter: '^\s*SSLCertificateFile /etc/grid-security/hostcert.pem$'
+
+
+    - name: Start FTS3 services
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+      loop:
+        - fts-server
+        - fts-qos
+        - httpd
+

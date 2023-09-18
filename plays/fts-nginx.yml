@@ -1,0 +1,82 @@
+---
+- hosts: your_ubuntu_server
+  become: yes
+  vars:
+    cert_src_path: /path/to/your/server.cert.pem
+    key_src_path: /path/to/your/server.key.pem
+    ca_chain_src_path: /path/to/your/ca-chain-bundle.cert.pem
+    remote_cert_dest_path: /home/ubuntu/certs/server.cert.pem
+    remote_key_dest_path: /home/ubuntu/certs/server.key.pem
+    remote_ca_chain_dest_path: /home/ubuntu/certs/ca-chain-bundle.cert.pem
+    nginx_upstream_port_rest: 8446
+    nginx_upstream_port_web: 8449
+    upstream_ips:
+      - 192.168.1.133
+      - 192.168.1.19
+
+  tasks:
+    - name: Update package list
+      apt:
+        update_cache: yes
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+
+    - name: Copy server certificate
+      copy:
+        src: "{{ cert_src_path }}"
+        dest: "{{ remote_cert_dest_path }}"
+
+    - name: Copy server key
+      copy:
+        src: "{{ key_src_path }}"
+        dest: "{{ remote_key_dest_path }}"
+
+    - name: Copy CA chain
+      copy:
+        src: "{{ ca_chain_src_path }}"
+        dest: "{{ remote_ca_chain_dest_path }}"
+
+
+    - name: Install NGINX
+      apt:
+        name: nginx
+        state: present
+
+
+    - name: Comment out default NGINX configuration
+      lineinfile:
+        path: /etc/nginx/sites-enabled/default
+        regexp: "^(.*)$"
+        line: "# \\1"
+
+    - name: Create upstreamRest.conf
+      template:
+        src: ./templates/upstreamRest.conf.j2
+        dest: /etc/nginx/upstreamRest.conf
+      owner: root
+      group: root
+      mode: '0644'
+
+    - name: Create upstreamWeb.conf
+      template:
+        src: ./templates/upstreamWeb.conf.j2
+        dest: /etc/nginx/upstreamWeb.conf
+      owner: root
+      group: root
+      mode: '0644'
+
+    - name: Replace nginx.conf
+      template:
+        src: ./templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+      owner: root
+      group: root
+      mode: '0644'
+
+    - name: Start NGINX service
+      service:
+        name: nginx
+        state: started
+        enabled: yes

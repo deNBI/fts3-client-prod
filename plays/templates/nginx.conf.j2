@@ -1,0 +1,118 @@
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 768;
+    # multi_accept on;
+}
+
+http {
+
+    ##
+    # Basic Settings
+    ##
+
+    sendfile on;
+    #tcp_nopush on;
+    #tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    # server_tokens off;
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+
+    # server_names_hash_bucket_size 64;
+    # server_name_in_redirect off;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    ##
+    # SSL Settings
+    ##
+
+    #ssl_protocols TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE
+    #ssl_prefer_server_ciphers on;
+
+    ##
+    # Logging Settings
+    ##
+
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    ##
+    # Gzip Settings
+    ##
+
+    gzip on;
+
+    ##
+    # Virtual Host Configs
+    ##
+
+    upstream fts3web {
+        include /etc/nginx/upstreamWeb.conf;
+    }
+
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        server_name {{ server_ip_or_dns }};
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    server {
+        listen 443 ssl http2;
+        listen [::]:443 ssl http2;
+        server_name {{ server_ip_or_dns }};
+        ssl_certificate {{ remote_cert_dest_path }};
+        ssl_certificate_key {{ remote_key_dest_path }};
+        ssl_trusted_certificate {{ remote_ca_chain_dest_path }};
+
+
+
+
+        ssl_session_timeout 1d;
+        ssl_session_cache shared:MozSSL:10m;  # about 40000 sessions
+        ssl_session_tickets off;
+        ssl_protocols TLSv1.3;
+        ssl_prefer_server_ciphers off;
+        add_header Strict-Transport-Security "max-age=63072000" always;
+
+        location / {
+            proxy_pass https://fts3web/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host:$server_port;
+            proxy_set_header X-Forwarded-Host $server_name;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "Upgrade";
+            proxy_set_header Origin '';
+        }
+    }
+
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+
+stream {
+    upstream fts3rest {
+        include /etc/nginx/upstreamRest.conf;
+    }
+
+    server {
+        listen 0.0.0.0:8446;
+        ssl_certificate {{ remote_cert_dest_path }};
+        ssl_certificate_key {{ remote_key_dest_path }};
+        ssl_trusted_certificate {{ remote_ca_chain_dest_path }};
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers off;
+        proxy_pass fts3rest;
+    }
+}

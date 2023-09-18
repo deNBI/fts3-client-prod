@@ -1,0 +1,165 @@
+---
+- hosts: centos_machine
+  vars:
+    # Define your variables here
+    ip_range_start: 192.168.1.1
+    ip_range_end: 192.168.1.255
+    proxy_floating_ip: YOUR_PROXY_FLOATING_IP
+    proxy_dns: YOUR_PROXY_DNS
+    server_L: Bielefeld
+    server_O: de.NBI
+    server_CN: 192.168.20.126
+    fts_user_subject: /C=DE/ST=SomeProvince/L=SomeCity/O=SomeOrganization/CN=A_USER
+    ca_root_subject: /C=DE/ST=NRW/O=de.NBI/L=Bielefeld/CN=de.NBI-FTS3-CA
+    ca_intermediate_subject:  /C=DE/ST=NRW/L=Bielefeld/O=de.NBI/CN=de.NBI-FTS3-IN-CA
+
+  tasks:
+    - name: Copy root and intermediate configuration files
+      copy:
+        src: "{{ item }}"
+        dest: "/custom_ca/"
+      loop:
+        - openssl_root.cnf
+        - openssl_intermediate.cnf
+        - client_cert_ext.cnf
+
+
+    - name: Create directories for TLS
+      file:
+        path: "/custom_ca/{{ item }}"
+        state: directory
+      loop:
+        - tls
+        - tls/certs
+        - tls/private
+        - tls/newcerts
+        - tls/intermediate
+        - tls/intermediate/certs
+        - tls/intermediate/csr
+        - tls/intermediate/private
+
+    - name: Initialize serial and index files
+      file:
+        path: "/custom_ca/{{ item }}"
+        state: touch
+      loop:
+        - tls/serial
+        - tls/index.txt
+        - tls/intermediate/serial
+        - tls/intermediate/crlnumber
+
+    - name: Generate CA key and certificate
+      command: >
+        openssl req -new -x509 -days 3650
+        -config /custom_ca/openssl_root.cnf
+        -extensions v3_ca
+        -key "/custom_ca/tls/private/ca.key.pem"
+        -out "/custom_ca/tls/certs/ca.cert.pem"
+        -subj "{{ ca_root_subject }}
+      args:
+        creates: "/custom_ca/tls/certs/ca.cert.pem"
+
+    - name: Generate intermediate CA key and certificate
+      command: >
+        openssl req -new -sha256
+        -config /custom_ca/openssl_intermediate.cnf
+        -key "/custom_ca/tls/intermediate/private/intermediate.ca.key.pem"
+        -out "/custom_ca/tls/intermediate/csr/intermediate.csr.pem"
+        -subj "{{ ca_intermediate_subject }} "
+      args:
+        creates: "/custom_ca/tls/intermediate/csr/intermediate.csr.pem"
+
+    - name: Sign intermediate CA certificate
+      command: >
+        openssl ca -config /custom_ca/openssl_root.cnf
+        -extensions v3_intermediate_ca
+        -days 2650 -notext -batch
+        -in "/custom_ca/tls/intermediate/csr/intermediate.csr.pem"
+        -out "/custom_ca/tls/intermediate/certs/intermediate.ca.cert.pem"
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/intermediate.ca.cert.pem"
+
+    - name: Create CA chain bundle
+      command: >
+        cat "/custom_ca/tls/intermediate/certs/intermediate.ca.cert.pem"
+        "/custom_ca/tls/certs/ca.cert.pem"
+        > "/custom_ca/tls/intermediate/certs/ca-chain-bundle.cert.pem"
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/ca-chain-bundle.cert.pem"
+
+    - name: Generate client key
+      command: >
+        openssl genrsa -out "/custom_ca/tls/intermediate/certs/client.key.pem" 4096
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/client.key.pem"
+
+    - name: Generate client certificate signing request
+      command: >
+        openssl req -new -config /custom_ca/openssl_intermediate.cnf
+        -key "/custom_ca/tls/intermediate/certs/client.key.pem"
+        -out "/custom_ca/tls/intermediate/certs/client.csr"
+        -subj "{{ fts_user_subject }}"
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/client.csr"
+
+    - name: Sign client certificate
+      command: >
+        openssl x509 -req -in "/custom_ca/tls/intermediate/certs/client.csr"
+        -CA "/custom_ca/tls/intermediate/certs/ca-chain-bundle.cert.pem"
+        -CAkey "/custom_ca/tls/intermediate/private/intermediate.ca.key.pem"
+        -out "/custom_ca/tls/intermediate/certs/client.cert.pem"
+        -CAcreateserial -days 365 -sha256
+        -extfile /custom_ca/client_cert_ext.cnf
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/client.cert.pem"
+
+    - name: Generate server certificate extension file
+      copy:
+        content: |
+          basicConstraints = CA:FALSE
+          nsCertType = server
+          nsComment = "OpenSSL Generated Server Certificate"
+          subjectKeyIdentifier = hash
+          authorityKeyIdentifier = keyid,issuer:always
+          keyUsage = critical, digitalSignature, keyEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = @alt_names
+          [alt_names]
+          {% for i in range(ip_range_start|int, ip_range_end|int + 1) %}
+          IP.{{ loop.index }} = {{ '192.168.1.' ~ i }}
+          {% endfor %}
+          IP.{{ loop.index + 1 }} = {{ proxy_floating_ip }}
+          DNS.1 = {{ proxy_dns }}
+        dest: "/custom_ca/openssl_server_cert_ext.cnf"
+
+    - name: Generate server key
+      command: >
+        openssl genrsa -out "/custom_ca/tls/intermediate/certs/server.key.pem" 4096
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/server.key.pem"
+
+    - name: Generate server certificate signing request
+      command: >
+        openssl req -config /custom_ca/openssl_root.cnf-new
+        -key "/custom_ca/tls/intermediate/certs/server.key.pem"
+        -out "/custom_ca/tls/intermediate/certs/server.csr"
+        -subj "/C=DE/ST=NRW/L=Bielefeld/O=de.NBI/CN=192.168.20.126"
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/server.csr"
+
+    - name: Sign server certificate
+      command: >
+        openssl x509 -req -in "/custom_ca/tls/intermediate/certs/server.csr"
+        -CA "/custom_ca/tls/intermediate/certs/ca-chain-bundle.cert.pem"
+        -CAkey "/custom_ca/tls/intermediate/private/intermediate.ca.key.pem"
+        -out "/custom_ca/tls/intermediate/certs/server.cert.pem"
+        -CAcreateserial -days 365 -sha256
+        -extfile /custom_ca/openssl_server_cert_ext.cnf
+      args:
+        creates: "/custom_ca/tls/intermediate/certs/server.cert.pem"
+
+    - name: Copy intermediate certs directory to the host
+      ansible.builtin.fetch:
+        src: "/custom_ca/tls/intermediate/certs"
+        dest: "{{ playbook_dir }}/intermediate"
+        flat: yes

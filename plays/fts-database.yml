@@ -7,7 +7,7 @@
     fts_schema_file: fts-schema-8.0.1.sql  # Define the FTS schema file as a variable
     fts_user_name: your_fts_user_name  # Define the FTS user name as a variable
     fts_user_password: fts_user_password  # Define the FTS user password as a variable
-    fts_user_subject: '/C=DE/ST=SomeProvince/L=SomeCity/O=SomeOrganization/CN=A_USER/emailAddress=someone@somewhere.de'  # Define the FTS user's subject as a variable
+    fts_user_subject: '/C=DE/ST=SomeProvince/L=SomeCity/O=SomeOrganization/CN=A_USER'  # Define the FTS user's subject as a variable
 
 
   tasks:
@@ -16,18 +16,16 @@
         name: '*'
         state: latest
       become: yes
-      
+
     - name: Install epel-release package (for CentOS)
       yum:
         name: epel-release
         state: present
-      when: ansible_distribution == 'CentOS'
 
     - name: Install pip via yum
       yum:
-        name: python3-pip
+        name: python-pip
         state: present
-      when: ansible_distribution == 'CentOS'
 
     - name: Install pexpect via pip
       pip:
@@ -37,22 +35,22 @@
     - name: Add MySQL YUM repository
       shell: "rpm -Uvh https://repo.mysql.com/mysql80-community-release-el7-3.noarch.rpm"
       args:
-            creates: /etc/yum.repos.d/mysql-community.repo
+        creates: /etc/yum.repos.d/mysql-community.repo
       ignore_errors: yes
       become: true
 
-    
+
     - name: Disable MySQL repository by modifying configuration
       replace:
         path: /etc/yum.repos.d/mysql-community.repo
         regexp: 'enabled=1'
         replace: 'enabled=0'
-  
-      
+
+
     - name: Import MySQL GPG Key
       shell: "rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2022"
     - name: Enable MySQL 8.0 repository
-      
+
       command: "yum --enablerepo=mysql80-community install -y mysql-community-server"
 
       become: true
@@ -62,11 +60,11 @@
       service:
         name: mysqld
         state: started
-    
+
     - name: Get temporary MySQL password
       shell: "grep 'A temporary password' /var/log/mysqld.log"
       register: temp_password
-      
+
     - name: Save temporary MySQL password to a variable
       set_fact:
         temp_password: "{{ temp_password.stdout_lines[0].split(': ')[1] }}"
@@ -78,7 +76,7 @@
       ignore_errors: yes  # Ignore errors to handle both success and failure cases
       no_log: true
 
-        
+
     - name: Run mysql_secure_installation
       expect:
         command: mysql_secure_installation
@@ -94,7 +92,7 @@
           'Change the password for root ?': 'Y'
         echo: true
       when: mysql_login_result.rc == 1  # Only run if login was failure
-      
+
     - name: Restart MySQL Service
       service:
         name: mysqld
@@ -102,12 +100,12 @@
 
     - name: Enable MySQL to start on boot
       command: chkconfig mysqld on
-        
+
     - name: Create FTS3 database
       shell: "mysql -u root -p{{ mysql_root_password }} -e 'CREATE DATABASE {{ database_name }};'"
       ignore_errors: yes
-      no_log: true
-        
+
+
     - name: Install wget
       yum:
         name: wget
@@ -132,7 +130,7 @@
       yum:
         name: fts-mysql
         state: present
-        
+
     - name: Import FTS3 schema
       shell: >
         mysql -u root --password="{{ mysql_root_password }}" "{{ database_name }}" < /usr/share/fts-mysql/{{ fts_schema_file }}
@@ -146,6 +144,7 @@
         FLUSH PRIVILEGES;
         GRANT SUPER ON *.* to '{{ fts_user_name }}'@'%';
         FLUSH PRIVILEGES;"
+      ignore_errors: yes
       no_log: true
 
 
