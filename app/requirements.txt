@@ -1,4 +1,4 @@
-fastapi==0.87.0
+fastapi==0.103.1
 uvicorn==0.20.0
 fts3==3.12.0.post1
 beautifulsoup4==4.11.1
