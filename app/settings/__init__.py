@@ -1,6 +1,4 @@
-from pydantic import BaseSettings, SecretStr
-
-
+from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DEBUG: bool
     LOG_LEVEL: str = "INFO"
