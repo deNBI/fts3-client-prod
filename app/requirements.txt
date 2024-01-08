@@ -1,5 +1,5 @@
-fastapi==0.87.0
-uvicorn==0.20.0
-fts3==3.12.0.post1
-beautifulsoup4==4.11.1
-minio==7.1.12
+fastapi==0.108.0
+uvicorn==0.25.0
+fts3==3.12.2
+beautifulsoup4==4.12.2
+minio==7.2.3
