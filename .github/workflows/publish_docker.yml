@@ -8,8 +8,7 @@ on:
       - 'hotfix/**'
 jobs:
   build:
-    runs-on: self-hosted
-    concurrency: api
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
       - name: Extract branch name
