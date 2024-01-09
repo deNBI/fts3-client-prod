@@ -15,7 +15,7 @@ RUN apt-get update \
     && apt-get -y install libpq-dev swig vim gcc libssl-dev
 
 # Copy and install Python dependencies
-COPY ./requirements.txt /code/app/requirements.txt
+COPY requirements.txt /code/app/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/app/requirements.txt
 
 # Copy the application code
