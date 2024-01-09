@@ -1,8 +1,7 @@
 # Use the official Python 3.12 slim image
 FROM python:3.12-slim
 
-# Set the working directory
-WORKDIR /code
+
 
 # Set environment variable to prevent Python from buffering stdout and stderr
 ENV PYTHONUNBUFFERED=1
@@ -20,6 +19,9 @@ RUN pip install --no-cache-dir --upgrade -r /code/app/requirements.txt
 
 # Copy the application code
 COPY . /code/app
+
+# Set the working directory
+WORKDIR /code
 
 # Set the default command to run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
