@@ -32,6 +32,6 @@ jobs:
       - name: Build and publish image to Quay
         uses: docker/build-push-action@v5
         with:
-          file: ./app/Dockerfile
+          file: app/Dockerfile
           push: true
           tags: quay.io/denbicloud/fts3-client:${{ steps.tag.outputs.TAG }}
