@@ -1,0 +1,38 @@
+name: Publish Docker
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'staging'
+      - 'dev'
+      - 'hotfix/**'
+jobs:
+  build:
+    runs-on: self-hosted
+    concurrency: api
+    steps:
+      - uses: actions/checkout@v4.1.1
+      - name: Extract branch name
+        shell: bash
+        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
+
+      - name: Set tag
+        run: sed 's/\//-/g'  <<< "::set-output name=TAG::${{ steps.extract_branch.outputs.branch }}"
+        id: tag
+      - name: Get tag
+        run: echo "The selected tag is ${{ steps.tag.outputs.TAG }}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+      - name: Build and publish image to Quay
+        uses: docker/build-push-action@v5
+        with:
+          file: ./app/Dockerfile
+          push: true
+          tags: quay.io/denbicloud/fts3-client:${{ steps.tag.outputs.TAG }}
