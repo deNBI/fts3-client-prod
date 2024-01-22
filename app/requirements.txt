@@ -1,5 +1,5 @@
 fastapi==0.108.0
-uvicorn==0.26.0
+uvicorn==0.27.0
 fts3==3.12.2
 beautifulsoup4==4.12.2
 minio==7.2.3
