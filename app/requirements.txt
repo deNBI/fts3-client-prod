@@ -3,4 +3,4 @@ uvicorn==0.27.0
 fts3==3.12.2
 beautifulsoup4==4.12.2
 minio==7.2.3
-pydantic-settings==2.1.0 
+pydantic-settings==2.2.0 
