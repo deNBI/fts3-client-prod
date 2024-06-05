@@ -1,6 +1,6 @@
 fastapi==0.110.0
 uvicorn==0.29.0
-fts3==3.12.2
+fts3==3.12.4
 beautifulsoup4==4.12.2
 minio==7.2.3
 pydantic-settings==2.2.0 
